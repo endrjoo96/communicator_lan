@@ -16,7 +16,7 @@ namespace Communicator_LAN
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new Form1());
+            Application.Run(new Config_window());
         }
     }
 }
