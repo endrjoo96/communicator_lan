@@ -12,15 +12,22 @@ namespace Communicator_LAN
 {
     public partial class User : UserControl
     {
-        public User()
+        Client client;
+        public User(string username, string ip)
         {
             InitializeComponent();
+            client = new Client(ip, username);
         }
 
         public void User_Resize(object sender, EventArgs e)
         {
             Kick_button.Location = new Point(Width - 47, Kick_button.Location.Y);
             Mute_button.Location = new Point(Width - 93, Mute_button.Location.Y);
+        }
+
+        internal Client GetClient()
+        {
+            return client;
         }
     }
 }

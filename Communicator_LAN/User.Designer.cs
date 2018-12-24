@@ -36,16 +36,16 @@
             // Username
             // 
             this.Username.AutoSize = true;
-            this.Username.Font = new System.Drawing.Font("Microsoft Sans Serif", 10F);
-            this.Username.Location = new System.Drawing.Point(3, 4);
+            this.Username.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F);
+            this.Username.Location = new System.Drawing.Point(3, 5);
             this.Username.Name = "Username";
-            this.Username.Size = new System.Drawing.Size(71, 17);
+            this.Username.Size = new System.Drawing.Size(63, 15);
             this.Username.TabIndex = 0;
             this.Username.Text = "username";
             // 
             // Mute_button
             // 
-            this.Mute_button.Location = new System.Drawing.Point(238, 4);
+            this.Mute_button.Location = new System.Drawing.Point(241, 2);
             this.Mute_button.Name = "Mute_button";
             this.Mute_button.Size = new System.Drawing.Size(40, 23);
             this.Mute_button.TabIndex = 1;
@@ -54,7 +54,7 @@
             // 
             // Kick_button
             // 
-            this.Kick_button.Location = new System.Drawing.Point(284, 4);
+            this.Kick_button.Location = new System.Drawing.Point(286, 2);
             this.Kick_button.Name = "Kick_button";
             this.Kick_button.Size = new System.Drawing.Size(40, 23);
             this.Kick_button.TabIndex = 2;

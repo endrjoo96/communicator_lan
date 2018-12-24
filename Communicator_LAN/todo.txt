@@ -1,0 +1,11 @@
+﻿-stworzyć obiekt użytkownika
+	- potrzebne są adresy IP, nazwy użytkowników (by było wiadomo, gdzie wysyłać dźwięk)
+	- bool do przechowywania stanu mute
+	- isSpeaking i isListening - just in case
+
+
+1. Co program powinien zrobić z użytkownikiem po połączeniu?
+ - przypisać id? (nie trzeba, każdy ma własny nick)
+ - wpisać do listy obiektów - aby był możliwy dostęp do użytkowników
+
+ Wysyłanie zmian na liście użytkowników wszystkim połączonym użytkownikom (obserwowalna lista?)
