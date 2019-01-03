@@ -17,13 +17,16 @@ namespace Communicator_LAN
 {
     public partial class Main_window : Form
     {
+        private TcpListener publicListener = null;
+
+        private bool consoleDebug = true;
+
         private string ServerName;
         private string Password;
         private int MaxUsers;
         private Form parent;
         private Size delta;
         private Thread incomingUsersThread;
-        private Thread listeningThread;     //wątek do przeszukiwania listy w poszukiwaniu osób, które aktualnie coś mówią.
         private ObservableCollection<Client> currentClientList;
 
         public Main_window(Form parent)
@@ -40,6 +43,9 @@ namespace Communicator_LAN
 
         private void CurrentClientList_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
         {
+            if (consoleDebug) Console.WriteLine("");
+            if (consoleDebug) Console.WriteLine(" *** NASTĄPIŁA ZMIANA W LIŚCIE KLIENTÓW *** ");
+            if (consoleDebug) Console.WriteLine("");
             foreach (Client recipient in currentClientList)
             {
                 Thread sendChanges = new Thread(() =>
@@ -50,12 +56,34 @@ namespace Communicator_LAN
                     BinaryWriter writer = null;
 
                     client = new TcpClient();
-                    client.Connect(recipient.getIP(), 65505);
-                    stream = client.GetStream();
-                    writer = new BinaryWriter(stream);
-                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER+
-                        COMMUNICATION_VALUES.SENDING.REFRESH_YOUR_LIST);
+                    if (consoleDebug) Console.WriteLine("sendChanges: Łączę z klientem "+recipient.getIP()+":"+recipient.getPort());
+                    if (consoleDebug) Console.WriteLine("...");
+                    try
+                    {
+                        Random r = new Random();
+                        Thread.Sleep(r.Next(1, 3000));
+                        client.ConnectAsync(recipient.getIP(), recipient.getPort()).Wait(2000);
+                        if (client.Connected)
+                        {
+                        if (consoleDebug) Console.WriteLine("sendChanges: Połączono z " + recipient.getIP() + ":" + recipient.getPort());
+                            stream = client.GetStream();
+                            writer = new BinaryWriter(stream);
+                            writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER +
+                                COMMUNICATION_VALUES.SENDING.REFRESH_YOUR_LIST);
+                            if (consoleDebug) Console.WriteLine("sendChanges: Wysyłam polecenie odświeżenia listy dla klienta " + client.Client.RemoteEndPoint.ToString());
+                        }
+                        else
+                        {
+                            if (consoleDebug) Console.WriteLine("sendChanges: Nie udało się nawiązać połączenia z " + recipient.getIP() + ":" + recipient.getPort());
+                        }
+                    } catch (SocketException socketex)
+                    {
+                        if (consoleDebug) Console.WriteLine("sendChanges: Nie udało się nawiązać połączenia z " + recipient.getIP());
+                        if (consoleDebug) Console.WriteLine("     "+socketex.Message);
+                    }
                 });
+                sendChanges.IsBackground = true;
+                sendChanges.Start();
             }
         }
 
@@ -103,129 +131,146 @@ namespace Communicator_LAN
             if (first)
             {
                 takeDataAndCloseParentForm(parent);
-                for (int i = 0; i < 3; i++)
-                {
-                    User u = createClient("Generated user " + (i + 1), "127.0.0." + (i + 1));
-                    addClient(u);
-                }
-                User a = createClient("pomidorek3000", "127.0.0.254");
-                addClient(a);
-                first = false;
             }
             try
             {
                 incomingUsersThread = new Thread(() =>
                 {
-                    TcpListener listener = null;
                     TcpClient client = null;
                     NetworkStream stream = null;
                     BinaryWriter writer = null;
                     BinaryReader reader = null;
 
                     byte[] IP = stringToByte(IP_textBox.Text);
-                    listener = new TcpListener(new System.Net.IPEndPoint(new System.Net.IPAddress(IP), 65505));
-                    listener.Start();
+                    publicListener = new TcpListener(new System.Net.IPEndPoint(new System.Net.IPAddress(IP), 45000));
+                    publicListener.Start();
+                    if(consoleDebug) Console.WriteLine("Tworzenie listenera dla "+IP_textBox.Text);
                     while (true)
                     {
-                        Console.WriteLine("czekam...");
-                        using (client = listener.AcceptTcpClient())
+                        if (consoleDebug) Console.WriteLine("Oczekiwanie na klienta...");
+                        using (client = publicListener.AcceptTcpClient())
                         {
-                            Console.WriteLine("coś tu do nas weszło");
+                            if (consoleDebug) Console.WriteLine("Przyjęto wezwanie od "+ client.Client.RemoteEndPoint.ToString());
                             using (stream = client.GetStream())
                             {
-                                reader = new BinaryReader(stream);
-                                string received = reader.ReadString();
-                                string header = received.Substring(0, received.IndexOf(':') + 1);
-                                if (header == COMMUNICATION_VALUES.CONNECTION_CLIENT)
+                                try
                                 {
-                                    string reason = received.Substring(received.IndexOf(':') + 1, (received.IndexOf('|')) - received.IndexOf(':'));
-                                    switch (reason)
+                                    reader = new BinaryReader(stream);
+                                    string received = reader.ReadString();
+                                    if (consoleDebug) Console.WriteLine("Otrzymano wiadomość:");
+                                    if (consoleDebug) Console.WriteLine("      " + received);
+                                    string header = received.Substring(0, received.IndexOf(':') + 1);
+                                    if (header == COMMUNICATION_VALUES.CONNECTION_CLIENT)
                                     {
-                                        case COMMUNICATION_VALUES.RECEIVING.USERNAME_AND_PASSWORD:
+                                        string reason = received.Substring(received.IndexOf(':') + 1, (received.IndexOf('|')) - received.IndexOf(':'));
+                                        switch (reason)
                                         {
-                                            string password = received.Substring(received.LastIndexOf('|') + 1);
-                                            if (password == Password && currentClientList.Count + 1 < MaxUsers)
+                                            case COMMUNICATION_VALUES.RECEIVING.USERNAME_AND_PASSWORD:
                                             {
-                                                string username = received.Substring(received.IndexOf('|') + 1, received.LastIndexOf('|') - 1 - received.IndexOf('|'));
-                                                writer = new BinaryWriter(stream);
-                                                writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.SERVER_NAME + ServerName);
-                                                Invoke(new MethodInvoker(() =>
+                                                string password = received.Substring(received.LastIndexOf('|') + 1);
+                                                if (password == Password && currentClientList.Count + 1 < MaxUsers)
                                                 {
+                                                    if (consoleDebug) Console.WriteLine("Logowanie klienta " + client.Client.RemoteEndPoint.ToString());
+                                                    string username = received.Substring(received.IndexOf('|') + 1, received.LastIndexOf('|') - 1 - received.IndexOf('|'));
+                                                    writer = new BinaryWriter(stream);
                                                     User incomingClient = createClient(username, ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString());
-                                                    addClient(incomingClient);
-                                                }));
-                                            }
-                                            else if (currentClientList.Count + 1 >= MaxUsers)
-                                            {
-                                                writer = new BinaryWriter(stream);
-                                                writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.SERVER_FULL);
-                                            }
-                                            else
-                                            {
-                                                writer = new BinaryWriter(stream);
-                                                writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.PASSWORD_INCORRECT);
-                                            }
-                                            break;
-                                        }
-                                        case COMMUNICATION_VALUES.RECEIVING.SEND_ME_CLIENT:
-                                        {
-                                            int number = Convert.ToInt32(received.Substring(received.LastIndexOf('|') + 1));
-                                            if (number < currentClientList.Count)
-                                            {
-                                                Client _tosend = currentClientList[number];
-                                                writer = new BinaryWriter(stream);
-                                                writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER +
-                                                    COMMUNICATION_VALUES.SENDING.NEXT_CLIENT_FROM_LIST +
-                                                    _tosend.getUsername() + "|" + _tosend.getIP());
-                                                int x = 0;
-                                            }
-                                            else
-                                            {
-                                                writer = new BinaryWriter(stream);
-                                                writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER +
-                                                    COMMUNICATION_VALUES.SENDING.END_OF_LIST);
-                                                int x = 0;
-                                            }
-                                            break;
-                                        }
-                                        case COMMUNICATION_VALUES.RECEIVING.TALKING:
-                                        {
-                                            string username = received.Substring(received.LastIndexOf('|') + 1);
-                                            foreach (Control c in UsersPanel.Controls)
-                                            {
-                                                if (c.GetType() == typeof(User))
-                                                {
-                                                    if((c as User).Username.Text == username)
+                                                    Invoke(new MethodInvoker(() =>
                                                     {
-                                                        Invoke(new MethodInvoker(() =>
+                                                        addClient(incomingClient);
+                                                    }));
+                                                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.SERVER_NAME + ServerName+
+                                                        "|"+incomingClient.GetClient().getPort().ToString());
+                                                }
+                                                else if (currentClientList.Count + 1 >= MaxUsers)
+                                                {
+                                                    writer = new BinaryWriter(stream);
+                                                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.SERVER_FULL);
+                                                    if (consoleDebug) Console.WriteLine("Wysyłanie wiadomości do " +
+                                                        client.Client.RemoteEndPoint.ToString() +
+                                                        " - Serwer pełny");
+                                                }
+                                                else
+                                                {
+                                                    writer = new BinaryWriter(stream);
+                                                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.PASSWORD_INCORRECT);
+                                                    if (consoleDebug) Console.WriteLine("Wysyłanie wiadomości do " +
+                                                        client.Client.RemoteEndPoint.ToString() +
+                                                        " - Złe hasło.");
+                                                }
+                                                break;
+                                            }
+                                            case COMMUNICATION_VALUES.RECEIVING.SEND_ME_CLIENT:
+                                            {
+                                                int number = Convert.ToInt32(received.Substring(received.LastIndexOf('|') + 1));
+                                                if (consoleDebug) Console.WriteLine("Klient " + client.Client.RemoteEndPoint.ToString() + " żąda " + number + " klienta na obecnej liście.");
+                                                if (number < currentClientList.Count)
+                                                {
+                                                    Client _tosend = currentClientList[number];
+                                                    writer = new BinaryWriter(stream);
+                                                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER +
+                                                        COMMUNICATION_VALUES.SENDING.NEXT_CLIENT_FROM_LIST +
+                                                        _tosend.getUsername() + "|" + _tosend.getIP());
+                                                    if (consoleDebug) Console.WriteLine("Wysyłam pozycję " + number);
+                                                }
+                                                else
+                                                {
+                                                    writer = new BinaryWriter(stream);
+                                                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER +
+                                                        COMMUNICATION_VALUES.SENDING.END_OF_LIST);
+                                                    if (consoleDebug) Console.WriteLine("Nie ma takiej pozycji na liście, wysyłam informację.");
+                                                }
+                                                break;
+                                            }
+                                            case COMMUNICATION_VALUES.RECEIVING.TALKING:
+                                            {
+                                                string username = received.Substring(received.LastIndexOf('|') + 1);
+                                                if (consoleDebug) Console.WriteLine("Klient " + client.Client.RemoteEndPoint.ToString() + " mówi.");
+                                                foreach (Control c in UsersPanel.Controls)
+                                                {
+                                                    if (c.GetType() == typeof(User))
+                                                    {
+                                                        if ((c as User).Username.Text == username)
                                                         {
-                                                            defaultBackgroundColor = (c as User).BackColor;
-                                                            (c as User).BackColor = Color.LightBlue;
-                                                        }));
+                                                            Invoke(new MethodInvoker(() =>
+                                                            {
+                                                                defaultBackgroundColor = (c as User).BackColor;
+                                                                (c as User).BackColor = Color.LightBlue;
+                                                            }));
+                                                        }
                                                     }
                                                 }
+                                                break;
                                             }
-                                            break;
-                                        }
-                                        case COMMUNICATION_VALUES.RECEIVING.NOT_TALKING:
-                                        {
-                                            string username = received.Substring(received.LastIndexOf('|') + 1);
-                                            foreach (Control c in UsersPanel.Controls)
+                                            case COMMUNICATION_VALUES.RECEIVING.NOT_TALKING:
                                             {
-                                                if (c.GetType() == typeof(User))
+                                                string username = received.Substring(received.LastIndexOf('|') + 1);
+                                                if (consoleDebug) Console.WriteLine("Klient " + client.Client.RemoteEndPoint.ToString() + " przestał mówić.");
+                                                foreach (Control c in UsersPanel.Controls)
                                                 {
-                                                    if ((c as User).Username.Text == username)
+                                                    if (c.GetType() == typeof(User))
                                                     {
-                                                        Invoke(new MethodInvoker(() =>
+                                                        if ((c as User).Username.Text == username)
                                                         {
-                                                            (c as User).BackColor = defaultBackgroundColor;
-                                                        }));
+                                                            Invoke(new MethodInvoker(() =>
+                                                            {
+                                                                (c as User).BackColor = defaultBackgroundColor;
+                                                            }));
+                                                        }
                                                     }
                                                 }
+                                                break;
                                             }
-                                            break;
                                         }
                                     }
+                                    else if (header == COMMUNICATION_VALUES.CONNECTION_SERVER)
+                                    {
+                                        publicListener.Stop();
+                                        break;
+                                    }
+                                }catch (IOException ioex)
+                                {
+                                    if (consoleDebug) Console.Write(ioex.Message);
+                                    if (consoleDebug) Console.Write(ioex.StackTrace);
                                 }
                             }
                         }
@@ -251,7 +296,26 @@ namespace Communicator_LAN
 
         public User createClient(string name, string address)
         {
-            User u = new User(name, address);
+            int port = 45001;
+            if (currentClientList.Count != 0)
+            {
+                int[] ports = new int[currentClientList.Count];
+                int i = 0;
+                foreach (Client c in currentClientList)
+                {
+                    ports[i] = c.getPort();
+                    i++;
+                }
+                Array.Sort(ports);
+                foreach (int p in ports)
+                {
+                    if (p == port)
+                        port++;
+                    else
+                        break;
+                }
+            }
+            User u = new User(name, address, port);
             if (UsersPanel.VerticalScroll.Visible)
                 u.Width = UsersPanel.Width - 20;
             else
@@ -269,9 +333,71 @@ namespace Communicator_LAN
             currentClientList.Add(u.GetClient());
         }
 
+        private void SendCloseRequest(Client c)
+        {
+            TcpClient client = null;
+            NetworkStream stream = null;
+            BinaryWriter writer = null;
+
+            client = new TcpClient();
+            if (consoleDebug) Console.WriteLine("shutdownInfo: Łączę z klientem " + c.getIP() + ":" + c.getPort());
+            if (consoleDebug) Console.WriteLine("...");
+            try
+            {
+                Random r = new Random();
+                Thread.Sleep(r.Next(1, 3000));
+                client.ConnectAsync(c.getIP(), c.getPort()).Wait(2000);
+                if (client.Connected)
+                {
+                    if (consoleDebug) Console.WriteLine("shutdownInfo: Połączono z " + c.getIP() + ":" + c.getPort());
+                    stream = client.GetStream();
+                    writer = new BinaryWriter(stream);
+                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER +
+                        COMMUNICATION_VALUES.SENDING.SERVER_SHUT_DOWN);
+                    if (consoleDebug) Console.WriteLine("shutdownInfo: Wysyłam informację o zamknięciu serwera dla klienta " + client.Client.RemoteEndPoint.ToString());
+                }
+                else
+                {
+                    if (consoleDebug) Console.WriteLine("shutdownInfo: Nie udało się nawiązać połączenia z " + c.getIP() + ":" + c.getPort());
+                }
+            }
+            catch (SocketException socketex)
+            {
+                if (consoleDebug) Console.WriteLine("shutdownInfo: Nie udało się nawiązać połączenia z " + c.getIP() + ":" + c.getPort());
+                if (consoleDebug) Console.WriteLine("     " + socketex.Message);
+            }
+        }
+
         private void Main_window_FormClosing(object sender, FormClosingEventArgs e)
         {
-            parent.Close();
+            if (currentClientList.Count != 0)
+            {
+                if (MessageBox.Show("Serwer jest w trakcie pracy. Czy na pewno chcesz go zamknąć?", "Wyłączenie serwera",
+                    MessageBoxButtons.YesNo) == DialogResult.Yes)
+                {
+                    int i = 0;
+                    foreach (Client c in currentClientList)
+                    {
+                        SendCloseRequest(c);
+                    }
+                }
+            }
+            forceCloseIncomingThread();
+            publicListener.Stop();
+            parent.Show();
+        }
+
+        private void forceCloseIncomingThread()
+        {
+            TcpClient client = null;
+            NetworkStream stream = null;
+            BinaryWriter writer = null;
+
+            client = new TcpClient();
+            client.ConnectAsync(IP_textBox.Text, 45000).Wait(100);
+            stream = client.GetStream();
+            writer = new BinaryWriter(stream);
+            writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER);
         }
 
         private void Main_window_Resize(object sender, EventArgs e)

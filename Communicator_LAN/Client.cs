@@ -9,11 +9,13 @@ namespace Communicator_LAN
     class Client
     {
         private string IP, Username;
+        private int Port;
         private bool isMuted=false, isListening=false, isTalking=false;
 
-        public Client(string ip, string username)
+        public Client(string ip, int port, string username)
         {
             IP = ip;
+            Port = port;
             Username = username;
         }
 
@@ -25,6 +27,11 @@ namespace Communicator_LAN
         public string getUsername()
         {
             return Username;
+        }
+
+        public int getPort()
+        {
+            return Port;
         }
     }
 }

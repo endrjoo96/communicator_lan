@@ -13,10 +13,10 @@ namespace Communicator_LAN
     public partial class User : UserControl
     {
         Client client;
-        public User(string username, string ip)
+        public User(string username, string ip, int port)
         {
             InitializeComponent();
-            client = new Client(ip, username);
+            client = new Client(ip, port, username);
         }
 
         public void User_Resize(object sender, EventArgs e)
