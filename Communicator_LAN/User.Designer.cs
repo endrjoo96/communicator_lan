@@ -79,7 +79,7 @@
         #endregion
 
         public System.Windows.Forms.Label Username;
-        private System.Windows.Forms.Button Mute_button;
-        private System.Windows.Forms.Button Kick_button;
+        public System.Windows.Forms.Button Mute_button;
+        public System.Windows.Forms.Button Kick_button;
     }
 }

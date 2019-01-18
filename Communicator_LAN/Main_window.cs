@@ -12,12 +12,16 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using NAudio;
 
 namespace Communicator_LAN
 {
     public partial class Main_window : Form
     {
         private TcpListener publicListener = null;
+        NAudio.Wave.WaveOut _wo = new NAudio.Wave.WaveOut();
+        int RATE = 22100;
+        int BUFFERSIZE = (int)Math.Pow(2, 12);
 
         private bool consoleDebug = true;
 
@@ -39,6 +43,7 @@ namespace Communicator_LAN
             delta = new Size(Width - UsersPanel.Width, Height - UsersPanel.Height);
 
             currentClientList.CollectionChanged += CurrentClientList_CollectionChanged;
+
         }
 
         private void CurrentClientList_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -56,7 +61,7 @@ namespace Communicator_LAN
                     BinaryWriter writer = null;
 
                     client = new TcpClient();
-                    if (consoleDebug) Console.WriteLine("sendChanges: Łączę z klientem "+recipient.getIP()+":"+recipient.getPort());
+                    if (consoleDebug) Console.WriteLine("sendChanges: Łączę z klientem " + recipient.getIP() + ":" + recipient.getPort());
                     if (consoleDebug) Console.WriteLine("...");
                     try
                     {
@@ -65,7 +70,7 @@ namespace Communicator_LAN
                         client.ConnectAsync(recipient.getIP(), recipient.getPort()).Wait(2000);
                         if (client.Connected)
                         {
-                        if (consoleDebug) Console.WriteLine("sendChanges: Połączono z " + recipient.getIP() + ":" + recipient.getPort());
+                            if (consoleDebug) Console.WriteLine("sendChanges: Połączono z " + recipient.getIP() + ":" + recipient.getPort());
                             stream = client.GetStream();
                             writer = new BinaryWriter(stream);
                             writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER +
@@ -79,7 +84,7 @@ namespace Communicator_LAN
                     } catch (SocketException socketex)
                     {
                         if (consoleDebug) Console.WriteLine("sendChanges: Nie udało się nawiązać połączenia z " + recipient.getIP());
-                        if (consoleDebug) Console.WriteLine("     "+socketex.Message);
+                        if (consoleDebug) Console.WriteLine("     " + socketex.Message);
                     }
                 });
                 sendChanges.IsBackground = true;
@@ -121,7 +126,7 @@ namespace Communicator_LAN
                 }
             }
             parent.Hide();
-            Text = ServerName+" - Serwer";
+            Text = ServerName + " - Serwer";
         }
 
         bool first = true;
@@ -144,13 +149,13 @@ namespace Communicator_LAN
                     byte[] IP = stringToByte(IP_textBox.Text);
                     publicListener = new TcpListener(new System.Net.IPEndPoint(new System.Net.IPAddress(IP), 45000));
                     publicListener.Start();
-                    if(consoleDebug) Console.WriteLine("Tworzenie listenera dla "+IP_textBox.Text);
+                    if (consoleDebug) Console.WriteLine("Tworzenie listenera dla " + IP_textBox.Text);
                     while (true)
                     {
                         if (consoleDebug) Console.WriteLine("Oczekiwanie na klienta...");
                         using (client = publicListener.AcceptTcpClient())
                         {
-                            if (consoleDebug) Console.WriteLine("Przyjęto wezwanie od "+ client.Client.RemoteEndPoint.ToString());
+                            if (consoleDebug) Console.WriteLine("Przyjęto wezwanie od " + client.Client.RemoteEndPoint.ToString());
                             using (stream = client.GetStream())
                             {
                                 try
@@ -178,8 +183,8 @@ namespace Communicator_LAN
                                                     {
                                                         addClient(incomingClient);
                                                     }));
-                                                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.SERVER_NAME + ServerName+
-                                                        "|"+incomingClient.GetClient().getPort().ToString());
+                                                    writer.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.SERVER_NAME + ServerName +
+                                                        "|" + incomingClient.GetClient().getPort().ToString());
                                                 }
                                                 else if (currentClientList.Count + 1 >= MaxUsers)
                                                 {
@@ -235,7 +240,41 @@ namespace Communicator_LAN
                                                             {
                                                                 defaultBackgroundColor = (c as User).BackColor;
                                                                 (c as User).BackColor = Color.LightBlue;
+                                                                (c as User).isTalking = true;
                                                             }));
+                                                            Thread receive = new Thread(() =>
+                                                            {
+                                                                IPEndPoint ipep = new IPEndPoint(IPAddress.Any, (c as User).GetClient().getPort() + 1000);
+                                                                UdpClient udpc = new UdpClient();
+                                                                try
+                                                                {
+                                                                    udpc = new UdpClient(ipep);
+                                                                }
+                                                                catch { }
+                                                                bool talking = (c as User).isTalking;
+                                                                while (talking)
+                                                                {
+                                                                    byte[] data = new byte[BUFFERSIZE];
+                                                                    data = udpc.Receive(ref ipep);
+                                                                    int x = 1;
+                                                                    /* odtworzyc dla testu */
+
+                                                                    Invoke(new MethodInvoker(() =>
+                                                                    {
+                                                                        talking = (c as User).isTalking;
+                                                                        NAudio.Wave.IWaveProvider prov = new NAudio.Wave.RawSourceWaveStream(new MemoryStream(data), new NAudio.Wave.WaveFormat(RATE, 1));
+
+                                                                        _wo.Init(prov);
+                                                                        _wo.Play();
+                                                                    }));
+                                                                }
+                                                                udpc.Close();
+                                                                udpc.Dispose();
+                                                            })
+                                                            { IsBackground = true };
+                                                            receive.Start();
+
+
                                                         }
                                                     }
                                                 }
@@ -254,8 +293,28 @@ namespace Communicator_LAN
                                                             Invoke(new MethodInvoker(() =>
                                                             {
                                                                 (c as User).BackColor = defaultBackgroundColor;
+                                                                (c as User).isTalking = false;
+                                                                UdpClient ud = new UdpClient();
+                                                                ud.Connect(IP_textBox.Text, (c as User).GetClient().getPort() + 1000);
+                                                                ud.Send(new byte[1] { 0 }, 1);
+                                                                _wo.Stop();
                                                             }));
                                                         }
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                            case COMMUNICATION_VALUES.RECEIVING.I_AM_DISCONNECTING:
+                                            {
+                                                string username = received.Substring(received.LastIndexOf('|') + 1);
+                                                foreach(Control c in UsersPanel.Controls)
+                                                {
+                                                    if (c.GetType() == typeof(User))
+                                                    {
+                                                        Invoke(new MethodInvoker(() => {
+                                                            currentClientList.Remove((c as User).GetClient());
+                                                            UsersPanel.Controls.Remove((c as User));
+                                                        }));
                                                     }
                                                 }
                                                 break;
@@ -267,7 +326,8 @@ namespace Communicator_LAN
                                         publicListener.Stop();
                                         break;
                                     }
-                                }catch (IOException ioex)
+                                }
+                                catch (IOException ioex)
                                 {
                                     if (consoleDebug) Console.Write(ioex.Message);
                                     if (consoleDebug) Console.Write(ioex.StackTrace);
@@ -276,8 +336,10 @@ namespace Communicator_LAN
                         }
                     }
 
-                });
-                incomingUsersThread.IsBackground = true;
+                })
+                {
+                    IsBackground = true
+                };
                 incomingUsersThread.Start();
             }
             catch (IOException ex) {
@@ -322,6 +384,80 @@ namespace Communicator_LAN
                 u.Width = UsersPanel.Width - 5;
             u.Location = new Point(u.Location.X, 27 * UsersPanel.Controls.Count);
             u.Username.Text = name;
+            u.Kick_button.Click += new EventHandler(delegate (object o, EventArgs e)
+            {
+                Thread kickThread = new Thread(() =>
+                {
+                    TcpClient c = new TcpClient();
+                    c.ConnectAsync(u.GetClient().getIP(), u.GetClient().getPort()).Wait(500);
+                    if (c.Connected)
+                    {
+                        NetworkStream ns = c.GetStream();
+                        BinaryWriter bw = new BinaryWriter(ns);
+                        bw.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.YOU_HAVE_BEEN_KICKED);
+                        c.Close();
+                        c.Dispose();
+                        ns.Dispose();
+                        bw.Dispose();
+                    }
+                })
+                { IsBackground = true };
+                kickThread.Start();
+                currentClientList.Remove(u.GetClient());
+                UsersPanel.Controls.Remove(u); 
+            });
+
+            u.Mute_button.Click += new EventHandler(delegate (object o, EventArgs e)
+            {
+                if (u.BackColor != Color.LightSalmon)
+                {
+                    u.isMuted = true;
+                    defaultBackgroundColor = u.BackColor;
+                    u.BackColor = Color.LightSalmon;
+
+
+                    Thread muteThread = new Thread(() =>
+                    {
+                        TcpClient c = new TcpClient();
+                        c.ConnectAsync(u.GetClient().getIP(), u.GetClient().getPort()).Wait(500);
+                        if (c.Connected)
+                        {
+                            NetworkStream ns = c.GetStream();
+                            BinaryWriter bw = new BinaryWriter(ns);
+                            bw.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.YOU_HAVE_BEEN_MUTED);
+                            c.Close();
+                            c.Dispose();
+                            ns.Dispose();
+                            bw.Dispose();
+                        }
+                    })
+                    { IsBackground = true };
+                    muteThread.Start();
+                }
+                else
+                {
+                    u.isMuted = false;
+                    u.BackColor = defaultBackgroundColor;
+
+                    Thread muteThread = new Thread(() =>
+                    {
+                        TcpClient c = new TcpClient();
+                        c.ConnectAsync(u.GetClient().getIP(), u.GetClient().getPort()).Wait(500);
+                        if (c.Connected)
+                        {
+                            NetworkStream ns = c.GetStream();
+                            BinaryWriter bw = new BinaryWriter(ns);
+                            bw.Write(COMMUNICATION_VALUES.CONNECTION_SERVER + COMMUNICATION_VALUES.SENDING.YOU_HAVE_BEEN_UNMUTED);
+                            c.Close();
+                            c.Dispose();
+                            ns.Dispose();
+                            bw.Dispose();
+                        }
+                    })
+                    { IsBackground = true };
+                    muteThread.Start();
+                }
+            });
             return u;
         }
 

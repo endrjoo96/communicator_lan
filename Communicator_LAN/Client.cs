@@ -10,7 +10,6 @@ namespace Communicator_LAN
     {
         private string IP, Username;
         private int Port;
-        private bool isMuted=false, isListening=false, isTalking=false;
 
         public Client(string ip, int port, string username)
         {

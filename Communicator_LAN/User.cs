@@ -13,6 +13,7 @@ namespace Communicator_LAN
     public partial class User : UserControl
     {
         Client client;
+        public bool isTalking = false, isMuted = false;
         public User(string username, string ip, int port)
         {
             InitializeComponent();
