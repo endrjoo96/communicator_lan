@@ -245,28 +245,38 @@ namespace Communicator_LAN
                                                             Thread receive = new Thread(() =>
                                                             {
                                                                 IPEndPoint ipep = new IPEndPoint(IPAddress.Any, (c as User).GetClient().getPort() + 1000);
-                                                                UdpClient udpc = new UdpClient();
-                                                                try
-                                                                {
-                                                                    udpc = new UdpClient(ipep);
-                                                                }
-                                                                catch { }
                                                                 bool talking = (c as User).isTalking;
+                                                                //Socket sck = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                                                                //sck.Bind(ipep);
+                                                                UdpClient udpc = new UdpClient((c as User).GetClient().getPort()+1000);
                                                                 while (talking)
                                                                 {
-                                                                    byte[] data = new byte[BUFFERSIZE];
+                                                                    byte[] data = new byte[BUFFERSIZE*2];
                                                                     data = udpc.Receive(ref ipep);
-                                                                    int x = 1;
                                                                     /* odtworzyc dla testu */
 
                                                                     Invoke(new MethodInvoker(() =>
                                                                     {
                                                                         talking = (c as User).isTalking;
-                                                                        NAudio.Wave.IWaveProvider prov = new NAudio.Wave.RawSourceWaveStream(new MemoryStream(data), new NAudio.Wave.WaveFormat(RATE, 1));
+                                                                        NAudio.Wave.IWaveProvider prov = new NAudio.Wave.RawSourceWaveStream(new MemoryStream(data), new NAudio.Wave.WaveFormat(RATE, 2));
 
                                                                         _wo.Init(prov);
                                                                         _wo.Play();
                                                                     }));
+                                                                    foreach (Client cl in currentClientList)
+                                                                    {
+                                                                        if (cl.getUsername() != (c as User).GetClient().getUsername())
+                                                                        {
+
+                                                                            //UdpClient ud = new UdpClient(46000);
+                                                                            //ud.Send(data, data.Length, cl.getIP(), cl.getPort() + 1000);
+                                                                            UdpClient ud = new UdpClient(46000);
+                                                                            ud.Connect("192.168.8.255", cl.getPort() + 1000);
+                                                                            ud.Send(data, data.Length);
+                                                                            ud.Close();
+                                                                            ud.Dispose();
+                                                                        }
+                                                                    }
                                                                 }
                                                                 udpc.Close();
                                                                 udpc.Dispose();
